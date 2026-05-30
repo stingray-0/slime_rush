@@ -71,6 +71,7 @@ class Player(pygame.sprite.Sprite):
         self.jump_speed = 12
         self.coyote_timer = 0
         self.coyote_time = 6
+        self.hitbox_y_offset = 0
         
         self.dash = False
         self.can_dash = True
@@ -85,11 +86,17 @@ class Player(pygame.sprite.Sprite):
         
         self.input_lock = 0
         
-    def update(self, platforms, barriers, spikes):
+        self.collected_cubes = []
+        self.follow_cubes = []
+        self.position_history = []
+        self.is_grounded = False
+        self.grounded_timer = 0
+        
+    def update(self, platforms, barriers, spikes, level):
         self.handle_input()
         self.apply_physics(platforms, barriers)
         self.update_animation()
-        self.death_check(spikes)
+        self.death_check(spikes, level)
         self.update_trail()
     
     
@@ -191,12 +198,12 @@ class Player(pygame.sprite.Sprite):
         
         #climb
         self.rect.x -= 1
-        touch_left = len(pygame.sprite.spritecollide(self, platforms, False)) > 0
+        self.touch_left = len(pygame.sprite.spritecollide(self, platforms, False)) > 0
         self.rect.x += 2
-        touch_right = len(pygame.sprite.spritecollide(self, platforms, False)) > 0
+        self.touch_right = len(pygame.sprite.spritecollide(self, platforms, False)) > 0
         self.rect.x -= 1
         
-        on_wall = touch_right or touch_left
+        on_wall = self.touch_right or self.touch_left
         keys = pygame.key.get_pressed()
         jump_pressed = keys[pygame.K_SPACE]
 
@@ -208,22 +215,22 @@ class Player(pygame.sprite.Sprite):
                 self.jump = True
                 self.input_lock = 12
                 
-                if touch_left:
+                if self.touch_left:
                     self.velocity_x = self.speed
-                elif touch_right:
+                elif self.touch_right:
                     self.velocity_x = -self.speed
                     
             #wall jump
             elif self.velocity_y > 0:
                 self.climb = False
-                self.velocity_y = -self.jump_speed +5
+                self.velocity_y = -self.jump_speed+3
                 self.jump = True
                 self.input_lock = 10
 
-                if touch_left:
-                    self.velocity_x = self.speed+5
-                elif touch_right:
-                    self.velocity_x = -self.speed-5
+                if self.touch_left:
+                    self.velocity_x = self.speed+7
+                elif self.touch_right:
+                    self.velocity_x = -self.speed-7
         
         
         if on_wall and self.grab and not self.dash:
@@ -232,8 +239,8 @@ class Player(pygame.sprite.Sprite):
             self.jump = False
             
             if self.climb_velocity < 0:
-                wall_dir = 1 if touch_right else -1
-                wall_x = self.rect.right + 2 if touch_right else self.rect.left - 2
+                wall_dir = 1 if self.touch_right else -1
+                wall_x = self.rect.right + 2 if self.touch_right else self.rect.left - 2
                 
                 head_rect = pygame.Rect(wall_x, self.rect.top, 2, 2)
                 head_hitting_wall = any(head_rect.colliderect(p.rect) for p in platforms)
@@ -256,6 +263,7 @@ class Player(pygame.sprite.Sprite):
         
         #vertical
         was_falling = self.velocity_y > 0
+        self.is_grounded = False
         
         if not self.climb:
             self.velocity_y += self.gravity
@@ -270,6 +278,8 @@ class Player(pygame.sprite.Sprite):
                 self.velocity_y = 0 
                 self.jump = False
                 self.coyote_timer = self.coyote_time
+                self.is_grounded = True
+                
                 if self.dash == False:
                     self.can_dash = True
                 
@@ -282,14 +292,37 @@ class Player(pygame.sprite.Sprite):
                 self.velocity_y = 0
                 self.dash_velocity_y = 0
                 self.dash = False
+        
+        #ice cube stuff
+        self.position_history.insert(0, self.rect.center)
+        if len(self.position_history) > 100: # We only need to remember the last 100 frames
+            self.position_history.pop()
+                
+        #grounded timer
+        if self.is_grounded and not self.dash:
+            self.grounded_timer += 1
+        else:
+            self.grounded_timer = 0
+        
+        if self.grounded_timer >= 30 and len(self.follow_cubes) > 0:
+            for cube in self.follow_cubes:
+                cube.state = "securing"
+                cube.timer = 0
+                self.collected_cubes.append(cube.id)
+            self.follow_cubes.clear()
+        
               
                 
     def update_animation(self):
+        self.hitbox_y_offset = 0
+        
         if self.state not in ("landing", "dashing") and not self.climb:
             if self.velocity_y < -2:
                 self.state = "jumping"
+                self.hitbox_y_offset = -5
             elif -2 <= self.velocity_y <= 2 and self.jump:
                 self.state = "floating"
+                self.hitbox_y_offset = -10
             elif self.velocity_y > 2:
                 self.state = "falling"
             elif self.velocity_y == 0:
@@ -346,7 +379,7 @@ class Player(pygame.sprite.Sprite):
                 self.current_frame = 0
             else:
                 self.current_frame = 2
-            if self.face ==  "right":
+            if self.touch_right:
                 self.image = self.climb_frame_right[self.current_frame]
             else:
                 self.image = self.climb_frame_left[self.current_frame]
@@ -369,16 +402,16 @@ class Player(pygame.sprite.Sprite):
             self.image = tinted_image
             
             
-        self.hitbox = pygame.Rect(self.rect.x+8, self.rect.y + (self.rect.height * 2/5), self.rect.width-16, self.rect.height *3/5)        
+        self.hitbox = pygame.Rect(self.rect.x+8, self.rect.y + (self.rect.height * 2/5) + self.hitbox_y_offset, self.rect.width-16, self.rect.height *3/5)        
 
 
-    def death_check(self, spikes):
+    def death_check(self, spikes, cur_level):
         if self.rect.y > 800:
-            self.die_and_respawn()
+            self.die_and_respawn(cur_level)
         
         for spike in spikes:
             if self.hitbox.colliderect(spike.hitbox):
-                self.die_and_respawn()
+                self.die_and_respawn(cur_level)
                 break
     
     
@@ -403,10 +436,22 @@ class Player(pygame.sprite.Sprite):
         surface.blit(self.image, camera.apply(self))
     
                 
-    def die_and_respawn(self):
+    def die_and_respawn(self, cur_level):
         self.rect.x = self.spawn_x
         self.rect.y = self.spawn_y
+        self.dash_velocity_x = 0
+        self.dash_velocity_y = 0
+        self.velocity_x = 0
         self.velocity_y = 0
+        self.dash = False
+        self.state = "idle"
+        for cube in self.follow_cubes:
+            cube.reset()
+            if cube.level != cur_level:
+                cube.kill()
+        self.follow_cubes.clear()
+        self.position_history.clear()
+        
     
     
     def next_level(self, x, y):
@@ -415,3 +460,13 @@ class Player(pygame.sprite.Sprite):
         self.rect = pygame.Rect(x, y, TILE_SIZE*1.5, TILE_SIZE*1.5)
         self.velocity_x = 0
         self.velocity_y = 0
+        self.dash_velocity_x = 0
+        self.dash_velocity_y = 0
+        self.dash = False
+        self.state = "idle"
+        self.grounded_timer = 0
+        
+        self.position_history.clear() 
+        
+        for cube in self.follow_cubes:
+            cube.rect.center = self.rect.center
