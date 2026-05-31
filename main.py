@@ -33,7 +33,7 @@ def menu(screen, title_font, instruction_font):
     screen.blit(instruction_text, instruction_rect)
 
 
-def paused_screen(screen, title_font, normal_font, pause_options, pause_selected):
+def paused_screen(screen, title_font, normal_font, pause_options, pause_selected, time_frames, player, skull_image):
     overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
     overlay.fill((0, 0, 0, 150))
     screen.blit(overlay, (0, 0))
@@ -53,8 +53,103 @@ def paused_screen(screen, title_font, normal_font, pause_options, pause_selected
         text_surface = normal_font.render(display_text, True, text_color)
         text_rect =text_surface.get_rect(center = (WIDTH // 2, HEIGHT // 2 + i*60))
         screen.blit(text_surface, text_rect)
+        
+    seconds = time_frames // 60
+    minutes = seconds // 60
+    milliseconds = int(time_frames%60 / 60.0 * 1000)
+    timer_text = f"{minutes:02d}:{seconds:02d}.{milliseconds:03d}"
+    timer_surface = normal_font.render(timer_text, True, (255, 255, 255))
+    screen.blit(timer_surface, (20, 20))
+    
+    death_text = f"Deaths: {player.death_count}"
+    death_surface = normal_font.render(death_text, True, (255, 100, 100))
+    screen.blit(death_surface, (WIDTH - death_surface.get_width() - 20, 20))
+    death_text = f"Ice Cubes: {len(player.collected_cubes)}"
+    death_surface = normal_font.render(death_text, True, (122, 229, 250))
+    screen.blit(death_surface, (WIDTH - death_surface.get_width() - 20, 60))
 
 
+def help_screen(screen, title_font, normal_font):
+    overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+    overlay.fill((0, 0, 0, 150)) 
+    screen.blit(overlay, (0, 0))
+    
+
+    help_title = title_font.render("HOW TO PLAY", True, (255, 255, 255))
+    title_rect = help_title.get_rect(center=(WIDTH // 2, 120))
+    screen.blit(help_title, title_rect)
+    instructions = [
+        "ARROW KEYS : Move & Climb",
+        "SPACE : Jump & Wall-Jump",
+        "X : Dash (Use with arrow keys))",
+        "Z (Hold) : Grab Walls",
+        "",
+        "Avoid Bramble Spikes",
+        "Bounce on Fungi to go flying",
+        "Collect glowing Ice Cubes!",
+        "",
+        "Press ESC to Return"
+    ]
+    
+    for i, line in enumerate(instructions):
+        if i < 4:
+            color = (150, 255, 150) 
+        elif "ESC" in line:
+            color = (255, 255, 100)
+        else:
+            color = (220, 220, 220)
+        text_surf = normal_font.render(line, True, color)
+        text_rect = text_surf.get_rect(center=(WIDTH // 2, 250 + (i * 45)))
+        screen.blit(text_surf, text_rect)
+
+
+def win_screen(screen, title_font, bold_font, player, total_frames, icons):
+    seconds = total_frames // 60
+    minutes = seconds // 60
+    seconds = seconds % 60
+    milliseconds = int(((total_frames % 60) / 60.0) * 1000)
+    timer_text = f"{minutes:02d}:{seconds:02d}.{milliseconds:03d}"
+    
+    win_title = title_font.render("RUN COMPLETE!", True, (255, 215, 0)) 
+    title_rect = win_title.get_rect(center=(WIDTH // 2, 150))
+    screen.blit(win_title, title_rect)
+    
+    time_surf = bold_font.render( f"Time:                {timer_text}", True, (255, 255, 255))
+    death_surf = bold_font.render(f"Deaths:            {player.death_count}", True, (255, 100, 100))
+    total_cubes = 0
+    for level in all_level:
+        total_cubes += level.total_cubes
+    cube_surf = bold_font.render( f"Cubes:             {len(player.collected_cubes)} / {total_cubes}", True, (122, 229, 250))
+
+    
+    start_y = 300
+    spacing = 80
+    
+    center_x = WIDTH // 2
+    icon_x = center_x + 50   
+    text_x = center_x - 200  
+    
+    time_rect = time_surf.get_rect(midleft=(text_x, start_y))
+    time_icon_rect = icons[0].get_rect(midright=(icon_x, start_y))
+    screen.blit(time_surf, time_rect)
+    screen.blit(icons[0], time_icon_rect)
+    
+    death_rect = death_surf.get_rect(midleft=(text_x, start_y + spacing))
+    death_icon_rect = icons[1].get_rect(midright=(icon_x, start_y + spacing))
+    screen.blit(death_surf, death_rect)
+    screen.blit(icons[1], death_icon_rect)
+    
+    cube_rect = cube_surf.get_rect(midleft=(text_x, start_y + (spacing * 2)))
+    cube_icon_rect = icons[2].get_rect(midright=(icon_x, start_y + (spacing * 2)))
+    screen.blit(cube_surf, cube_rect)
+    screen.blit(icons[2], cube_icon_rect)
+    
+    
+    
+    prompt = bold_font.render("Press ENTER to Return to Menu", True, (180, 180, 180))
+    screen.blit(prompt, prompt.get_rect(center=(WIDTH // 2, HEIGHT - 150)))
+
+    
 def render_level(
     all_sprites,
     player,
@@ -175,7 +270,6 @@ def render_level(
                         spike_direction = "left"
                 case "F":
                     sprite_type = "fungi"
-                    image_list = tile_images["fungi"]["normal"]
                     fungi_direction = "up"
                     up_solid = row_idx > 0 and level[row_idx-1][col_idx] == "D"
                     down_solid = row_idx < len(level)-1 and level[row_idx+1][col_idx] == "D"
@@ -218,6 +312,8 @@ def render_level(
                     barriers.add(new_sprite)
                 case "fungi":
                     new_sprite = Fungi(x_pos, y_pos, fungi_direction)
+                    # barriers.add(new_sprite)
+                    fungi.add(new_sprite)
                 case "ice_cube":
                     banked = cube_id in player.collected_cubes
                     trailing = any(cube.id == cube_id for cube in player.follow_cubes)
@@ -243,13 +339,25 @@ def run_game():
     bg_image = pygame.transform.smoothscale(bg_image, (new_width, HEIGHT))
     clock = pygame.time.Clock()
 
-    title_font = pygame.font.Font(None, 108)
-    normal_font = pygame.font.Font(None, 48)
+    title_font = pygame.font.Font("assets/fonts/ThaleahFat.ttf", 108)
+    bold_font = pygame.font.Font("assets/fonts/ThaleahFat.ttf", 48)
+    normal_font = pygame.font.Font("assets/fonts/m5x7.ttf", 48)
 
     grass_sheet = pygame.image.load("assets/grass_tile.png").convert_alpha()
     bramble_sheet = pygame.image.load("assets/bramble_bush_tile.png").convert_alpha()
-    ice_cube_sheet = pygame.image.load("assets/ice_cube.png").convert_alpha()
+    ice_cube_image = pygame.image.load("assets/ice_cube.png").convert_alpha()
+    ice_cube_image = pygame.transform.scale(ice_cube_image, (TILE_SIZE*1.5, TILE_SIZE*1.5))
+    timer_image = pygame.image.load("assets/timer.png").convert_alpha()
+    timer_image = pygame.transform.scale(timer_image, (TILE_SIZE*1.5, TILE_SIZE*1.5))
+    skull_image = pygame.image.load("assets/skull.png").convert_alpha()
+    skull_image = pygame.transform.scale(skull_image, (TILE_SIZE*1.5, TILE_SIZE*1.5))
     fungi_sheet = pygame.image.load("assets/fungi.png").convert_alpha()
+    icons = [
+        timer_image,
+        skull_image, 
+        ice_cube_image
+    ]
+    
     Fungi.load_animations(fungi_sheet)
     
     tile_images = {
@@ -318,7 +426,7 @@ def run_game():
         },
         "ice_cube":{
             "normal":[
-                get_image(ice_cube_sheet, 0, 0, TILE_SIZE, TILE_SIZE, TILE_SIZE*1.5)
+                ice_cube_image
             ],
         },
     }
@@ -333,7 +441,7 @@ def run_game():
     ice_cubes = pygame.sprite.Group()
     camera = Camera(WIDTH, HEIGHT)
     
-    current_level = 1
+    current_level =10
     current_room = pygame.Rect(TILE_SIZE, 0, (len(all_level[current_level-1].grid[0])-2)*TILE_SIZE, (len(all_level[current_level-1].grid)-1)*TILE_SIZE) 
     camera.set_bounds(current_room)
     
@@ -341,9 +449,12 @@ def run_game():
     render_level(all_sprites, player, platforms, goals, leave_goals, barriers, spikes, fungi, ice_cubes, tile_images, 1, current_level)
 
     game_state = "MENU"
-    pause_options = ["Resume", "Retry", "Quit"]
+    pause_options = ["Resume", "Retry", "Restart Run", "Help", "Quit"]
     pause_selected = 0
     running = True
+    
+    total_frames = 0
+    
     while running:
         screen.fill((100, 100, 100))
         screen.blit(bg_image, (0, 0))
@@ -369,15 +480,58 @@ def run_game():
                         elif selected_text == "Retry":
                             player.die_and_respawn(current_level)
                             game_state = "PLAYING"
+                        elif selected_text == "Restart Run":
+                            player.death_count = 0
+                            total_frames = 0
+                            player.collected_cubes.clear()
+                            player.follow_cubes.clear()
+                            current_level = 1
+                            current_room = pygame.Rect(TILE_SIZE, 0, (len(all_level[current_level-1].grid[0])-2)*TILE_SIZE, (len(all_level[current_level-1].grid)-1)*TILE_SIZE) 
+                            camera.set_bounds(current_room)
+                            
+                            render_level(all_sprites, player, platforms, goals, leave_goals, barriers, spikes, fungi, ice_cubes, tile_images, 1, current_level)
+                            
+                            spawn_x = all_level[current_level-1].forward_spawn[0]
+                            spawn_y = all_level[current_level-1].forward_spawn[1]
+                            player.next_level(spawn_x, spawn_y)
+                            
+                            game_state = "PLAYING"
+                        elif selected_text == "Help":
+                            game_state = "HELP"
                         elif selected_text == "Quit":
                             running = False
+                elif game_state == "HELP":
+                    if event.key == pygame.K_ESCAPE:
+                        game_state = "PAUSED"
+                elif game_state == "WIN":
+                    if event.key == pygame.K_RETURN:
+                        game_state = "MENU"
+                        player.death_count = 0
+                        total_frames = 0
+                        player.collected_cubes.clear()
+                        player.follow_cubes.clear()
+                        current_level = 1
+                        current_room = pygame.Rect(TILE_SIZE, 0, (len(all_level[current_level-1].grid[0])-2)*TILE_SIZE, (len(all_level[current_level-1].grid)-1)*TILE_SIZE) 
+                        camera.set_bounds(current_room)
+                        
+                        render_level(all_sprites, player, platforms, goals, leave_goals, barriers, spikes, fungi, ice_cubes, tile_images, 1, current_level)
+                        
+                        spawn_x = all_level[current_level-1].forward_spawn[0]
+                        spawn_y = all_level[current_level-1].forward_spawn[1]
+                        player.next_level(spawn_x, spawn_y)
                         
         if game_state == "MENU":
             menu(screen, title_font, normal_font)
-        elif game_state in  ("PLAYING", "PAUSED"):
+        elif game_state == "WIN":
+            win_screen(screen, title_font, bold_font, player, total_frames, icons)
+        else:
             if game_state == "PLAYING":
-                player.update(platforms, barriers, spikes, current_level)
+                total_frames += 1
+                player.update(platforms, barriers, spikes, fungi, current_level)
                 camera.update(player)
+                
+                for fungus in fungi:
+                    fungus.update()
                 
                 for cube in ice_cubes:
                     cube.update(player)
@@ -386,29 +540,32 @@ def run_game():
                         player.follow_cubes.append(cube)
                         
                     
-                for spike in spikes:
-                    debug_rect = spike.hitbox.move(camera.camera.topleft)
+                # for spike in spikes:
+                #     debug_rect = spike.hitbox.move(camera.camera.topleft)
                     
-                    pygame.draw.rect(screen, (255, 0, 0), debug_rect, 2)
+                #     pygame.draw.rect(screen, (255, 0, 0), debug_rect, 2)
 
-                player_debug = player.hitbox.move(camera.camera.topleft)
-                pygame.draw.rect(screen, (0, 255, 0), player_debug, 2)
-                for cube in ice_cubes:
-                    cube_debug = cube.hitbox.move(camera.camera.topleft)
-                    pygame.draw.rect(screen, (0, 255, 0), cube_debug, 2)
+                # player_debug = player.hitbox.move(camera.camera.topleft)
+                # pygame.draw.rect(screen, (0, 255, 0), player_debug, 2)
+                # for cube in ice_cubes:
+                #     cube_debug = cube.hitbox.move(camera.camera.topleft)
+                #     pygame.draw.rect(screen, (0, 255, 0), cube_debug, 2)
                 if pygame.sprite.spritecollide(player, goals, False):
-                    current_level += 1
-                    current_room = pygame.Rect(TILE_SIZE, 0, (len(all_level[current_level-1].grid[0])-2)*TILE_SIZE, (len(all_level[current_level-1].grid)-1)*TILE_SIZE) 
-                    camera.set_bounds(current_room)
-                    
-                    saved_cubes = player.follow_cubes.copy()
-                    
-                    render_level(all_sprites, player, platforms, goals, leave_goals, barriers, spikes, fungi, ice_cubes, tile_images, 1, current_level)
-                    
-                    for cube in saved_cubes:
-                        ice_cubes.add(cube)
-                        all_sprites.add(cube)
-                    player.next_level(all_level[current_level-1].forward_spawn[0], all_level[current_level-1].forward_spawn[1])
+                    if current_level >= len(all_level):
+                        game_state = "WIN"
+                    else:
+                        current_level += 1
+                        current_room = pygame.Rect(TILE_SIZE, 0, (len(all_level[current_level-1].grid[0])-2)*TILE_SIZE, (len(all_level[current_level-1].grid)-1)*TILE_SIZE) 
+                        camera.set_bounds(current_room)
+                        
+                        saved_cubes = player.follow_cubes.copy()
+                        
+                        render_level(all_sprites, player, platforms, goals, leave_goals, barriers, spikes, fungi, ice_cubes, tile_images, 1, current_level)
+                        
+                        for cube in saved_cubes:
+                            ice_cubes.add(cube)
+                            all_sprites.add(cube)
+                        player.next_level(all_level[current_level-1].forward_spawn[0], all_level[current_level-1].forward_spawn[1])
                 if pygame.sprite.spritecollide(player, leave_goals, False):
                     if current_level > 1:
                         current_level -= 1
@@ -429,12 +586,15 @@ def run_game():
             player.draw(screen, camera)
         
             if game_state == "PAUSED":
-                paused_screen(screen, title_font, normal_font, pause_options, pause_selected)
+                paused_screen(screen, title_font, normal_font, pause_options, pause_selected, total_frames, player, skull_image)
         
+            if game_state == "HELP":
+                help_screen(screen, title_font, normal_font)
         pygame.display.flip()
         
         clock.tick(60)
     print(player.collected_cubes)
+    print(total_frames)
     pygame.quit()
     sys.exit()
 

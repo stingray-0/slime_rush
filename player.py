@@ -92,9 +92,11 @@ class Player(pygame.sprite.Sprite):
         self.is_grounded = False
         self.grounded_timer = 0
         
-    def update(self, platforms, barriers, spikes, level):
+        self.death_count = 0
+        
+    def update(self, platforms, barriers, spikes, fungi, level):
         self.handle_input()
-        self.apply_physics(platforms, barriers)
+        self.apply_physics(platforms, barriers, fungi)
         self.update_animation()
         self.death_check(spikes, level)
         self.update_trail()
@@ -162,7 +164,7 @@ class Player(pygame.sprite.Sprite):
         return self.velocity_x
     
     
-    def apply_physics(self, platforms, barriers):
+    def apply_physics(self, platforms, barriers, fungi):
         if self.dash:
             self.velocity_x = self.dash_velocity_x
             self.velocity_y = self.dash_velocity_y
@@ -189,10 +191,8 @@ class Player(pygame.sprite.Sprite):
                 self.rect.left = hit.rect.right
             
             if self.dash:
-                # self.dash = False
                 self.dash_velocity_x = 0
-                # if self.velocity_y < 0:
-                #     self.velocity_y = -self.jump_speed
+
 
 
         
@@ -292,6 +292,26 @@ class Player(pygame.sprite.Sprite):
                 self.velocity_y = 0
                 self.dash_velocity_y = 0
                 self.dash = False
+                
+        #fungi stuff
+        
+        fungi_hits = pygame.sprite.spritecollide(self, fungi, False)
+        for fungus in fungi_hits:
+            if fungus.direction == "up":
+                self.velocity_y = -15
+            elif fungus.direction == "down":
+                self.velocity_y = 15
+            elif fungus.direction == "right":
+                self.velocity_x = 15
+                self.input_lock = 15
+            elif fungus.direction == "left":
+                self.velocity_x = -15
+                self.input_lock = 10
+            self.jump = True
+            self.dash = False
+            self.can_dash = True
+            fungus.state = "bounce"
+        
         
         #ice cube stuff
         self.position_history.insert(0, self.rect.center)
@@ -437,8 +457,10 @@ class Player(pygame.sprite.Sprite):
     
                 
     def die_and_respawn(self, cur_level):
+        self.death_count += 1
         self.rect.x = self.spawn_x
         self.rect.y = self.spawn_y
+        self.input_lock = 20
         self.dash_velocity_x = 0
         self.dash_velocity_y = 0
         self.velocity_x = 0

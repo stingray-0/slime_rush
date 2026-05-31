@@ -108,7 +108,25 @@ class Fungi(pygame.sprite.Sprite):
         self.rect = self.image.get_rect(topleft=(x, y))
         self.hitbox = pygame.Rect(x + 4, y + 4, self.rect.width - 8, self.rect.height - 8)
         self.state = "idle"
-
+        self.animation_timer = 0
+    
+    def update(self):
+        if self.state == "idle":
+            self.image = self.frames[0]
+        elif self.state == "bounce":
+            self.animation_timer += 0.2
+            if self.animation_timer < 1:
+                self.image = self.frames[1]
+            elif self.animation_timer < 2:
+                self.image = self.frames[2]
+            elif self.animation_timer < 3:
+                self.image = self.frames[3]
+            elif self.animation_timer < 4:
+                self.image = self.frames[4]
+            else:
+                self.state = "idle"
+                self.animation_timer = 0
+                
 class IceCube(pygame.sprite.Sprite):
     def __init__(self, x, y, image, level, id):
         super().__init__()
